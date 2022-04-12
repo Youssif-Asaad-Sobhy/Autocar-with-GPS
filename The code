@@ -1,0 +1,680 @@
+// Ping Sensor for Collision Avoidance
+
+boolean pingOn = false;                                            // Turn Collision detection On or Off
+
+int trigPin = 0;                                                  // Trig - Orange
+int echoPin = 0;                                                  // Echo - Yellow
+long duration, inches;
+int Ping_distance;
+
+unsigned long currentMillis = 0;
+unsigned long previousMillis = 0;                                  // Store last time Ping was updated
+const long interval = 100;                                         // Ping the Distance every X miliseconds
+//*****************************************ultrasonic**********************
+
+
+#include <Ultrasonic.h>
+float distr, distm, distl;
+int r,m,l;
+Ultrasonic ultrasonicr(22,24);            //right ultra(trig, echo)
+Ultrasonic ultrasonicm(26, 28);            //middle ultra(trig, echo)
+Ultrasonic ultrasonicl(30, 32);            //left ultra(trig, echo)
+int led1 =41;//right
+int led2 =43;//middle
+int led3 =47;//left
+
+
+ 
+//************************GPS********************
+#include <TinyGPS++.h>    
+
+int GPS_Course;                                                    // variable to hold the gps's determined course to destination
+int Number_of_SATS;                                                // variable to hold the number of satellites acquired
+TinyGPSPlus gps;                                                   // gps = instance of TinyGPS 
+                                                                   // pin 17 (blue)   is connected to the TX on the GPS
+                                                                   // pin 16 (yellow) is connected to the RX on the GPS
+   // GPS Locations
+unsigned long Distance_To_Home;                                    // variable for storing the distance to destination
+int ac =0;                                                         // GPS array counter
+int wpCount = 0;                                                   // GPS waypoint counter
+double Home_LATarray[50];                                          // variable for storing the destination Latitude - Only Programmed for 5 waypoint
+double Home_LONarray[50];                                          // variable for storing the destination Longitude - up to 50 waypoints
+
+int increment = 0;                                   
+//********************COMPASS*************
+#include <MPU9250_asukiaaa.h> 
+#ifdef _ESP32_HAL_I2C_H_
+#define SDA_PIN 20
+#define SCL_PIN 21
+#endif
+int compass_heading;   
+int desired_heading;                                               // initialize variable - stores value for the new desired heading
+int Heading_A;                                                     // variable to store compass heading
+int Heading_B;                                                     // variable to store compass heading in Opposite direction
+int compass_dev = 5;
+int pass = 0;
+      
+float  mDirection,aSqrt,mX, mY, mZ;
+MPU9250_asukiaaa mySensor;
+//************************END COMPASS****************
+int led=10;
+String command;
+int doit;
+int IN1=36;
+int IN2=50;
+int IN3=48;
+int IN4=46;
+int ENA=8;
+int ENB=9;                                  // raw string received from android to arduino
+
+
+
+
+
+//***********************void setup***************************
+
+void setup(){pinMode(led,OUTPUT);
+Serial.begin(9600);                                                 // Serial 0 is for Bluetooth communication - DO NOT MODIFY - JY-MCU HC-06 v1.40
+Serial1.begin(115200);                                              // Serial 1 is for communication with the computer
+Serial2.begin(9600);                                                // Serial 2 is for GPS communication at 9600 baud - DO NOT MODIFY - Ublox Neo 6m 
+//*********************ultrasonic*******************************
+
+Serial3.begin(9600);
+pinMode(led1,OUTPUT);
+pinMode(led2,OUTPUT);
+pinMode(led3,OUTPUT);
+//************************COMPASS*******************
+ 
+  while(!Serial1);
+#ifdef _ESP32_HAL_I2C_H_ // For ESP32
+  Wire.begin(SDA_PIN, SCL_PIN);
+  mySensor.setWire(&Wire);
+#endif
+
+  mySensor.beginMag();
+
+   //You can set your own offset for mag values
+   mySensor.magXOffset = -15;
+   mySensor.magYOffset = -30;
+   mySensor.magZOffset = -17;
+//**************************END COMPASS******************************
+}
+
+ 
+
+
+ 
+void loop (){
+Bluetooth();
+getGPS(); 
+CompassRead();
+distance();
+distancem();
+distancel();
+                                                       // Update the GPS location
+     
+
+ } 
+
+
+
+ // ************************************************************************************************************************************************* 
+
+void getGPS()                                                 // Get Latest GPS coordinates
+{
+    while (Serial2.available() > 0)
+    gps.encode(Serial2.read());
+} 
+void gpsInfo()                                                  // displays Satellite data to user
+  {
+        Number_of_SATS = (int)(gps.satellites.value());         //Query Tiny GPS for the number of Satellites Acquired 
+        Distance_To_Home = TinyGPSPlus::distanceBetween(gps.location.lat(),gps.location.lng(),Home_LATarray[ac], Home_LONarray[ac]);  //Query Tiny GPS for Distance to Destination    
+        Serial.print("Lat:");
+        Serial.print(gps.location.lat(),6);
+        Serial.print(" Lon:");
+        Serial.print(gps.location.lng(),6);
+        Serial.print(" ");
+        Serial.print(Number_of_SATS); 
+        Serial.print(" SATs ");
+        Serial.print(Distance_To_Home);
+        Serial.print("m"); 
+        Serial1.print("Lat:");
+        Serial1.print(gps.location.lat(),6);
+        Serial1.print(" Lon:");
+        Serial1.print(gps.location.lng(),6);
+Serial.print("Distance to Home ");
+Serial.println(Distance_To_Home);
+  
+  }
+
+ 
+//*****************MOTOR CONTROL**************************
+void Forward(){
+analogWrite(ENA,250);
+analogWrite(ENB,250);
+digitalWrite(led,HIGH);
+digitalWrite(IN1,HIGH);
+digitalWrite(IN2,LOW);
+digitalWrite(IN3,HIGH);
+digitalWrite(IN4,LOW); 
+}
+
+void Reverse(){
+analogWrite(ENA,250);
+analogWrite(ENB,250);
+digitalWrite(led,HIGH);
+digitalWrite(IN1,LOW);
+digitalWrite(IN2,HIGH);
+digitalWrite(IN3,LOW);
+digitalWrite(IN4,HIGH);
+}
+void LeftTurn(){
+analogWrite(ENA,250);
+analogWrite(ENB,250);
+digitalWrite(led,HIGH);
+digitalWrite(IN1,LOW);
+digitalWrite(IN2,HIGH);
+digitalWrite(IN3,HIGH);
+digitalWrite(IN4,LOW);
+}
+void  RightTurn(){
+analogWrite(ENA,250);
+analogWrite(ENB,250);
+digitalWrite(led,HIGH);
+digitalWrite(IN1,HIGH);
+digitalWrite(IN2,LOW);
+digitalWrite(IN3,LOW);
+digitalWrite(IN4,HIGH);
+}
+void  Stop(){
+analogWrite(ENA,0);
+analogWrite(ENB,0);
+digitalWrite(led,LOW);
+digitalWrite(IN1,LOW);
+digitalWrite(IN2,LOW);
+digitalWrite(IN3,LOW);
+digitalWrite(IN4,LOW);
+}
+//**************END MOTOR CONTROL*********************************
+//*******************COMPASS CALCULATIONS**********************
+void getCompass(){
+float heading = atan2(mY,mX ); 
+if(heading < 0)
+   heading += 2 * M_PI;      
+   compass_heading = (int)(heading * 180/M_PI);     
+   Serial1.print("heading: "); 
+   Serial1.print(compass_heading);  
+}
+//**********END COMPASS CALCULATIONS ************************ 
+void CompassRead(){
+  // COMPASS ID ******************************************************************
+  uint8_t sensorId;
+  if (mySensor.readId(&sensorId) == 0) {
+    
+  } else {
+    Serial.println("Cannot read sensorId");
+  }
+  //******END COMPASS ID******************************************
+  //******COMPASS READ********************************************
+   if (mySensor.magUpdate() == 0) {
+    mX = mySensor.magX();
+    mY = mySensor.magY();
+    mZ = mySensor.magZ();
+    mDirection = mySensor.magHorizDirection();
+    getCompass();
+  } else {
+    Serial.println("Cannot read mag values");
+  }    
+  //**********COMPASS READ END************************************
+delay(100);
+}
+void Bluetooth() {
+  // Bluetooth Section
+// *********************************************************************************************************
+ while (Serial.available()) {
+  command = Serial.read();  
+  doit=(command.toInt()); 
+ switch (doit) 
+ {
+      case 'F':                                
+        Forward();
+        break;
+
+      case 'R':                 
+        Reverse();
+        break;
+
+      case 'L':         
+        LeftTurn();
+        break;
+        
+      case 'K':                     
+        RightTurn();
+        break;
+        
+      case 'S':                                            
+        Stop();
+        break; 
+      case 'H':                                            
+        setHeading();
+        break; 
+      case 'W':        
+        Serial.println("Compass Forward");
+        Compass_Forward();
+        break;     
+      case 'G':  
+        Serial.println("Compass Turn Right");
+        CompassTurnRight();
+        break; 
+      case 'M':  
+        Serial.println("Compass Turn Left");
+        CompassTurnLeft();
+        break; 
+      case 'N':        
+        Serial.println("Turn Around");
+        turnAround();
+        break;
+      case 'Y':                 
+        setWaypoint();
+        break;
+      case 'A':        
+        goWaypoint();
+        break;
+      case 'V':
+         gpsInfo();
+        break; 
+      case 'C':
+        clearWaypoints();
+        break;
+      case 'B':                    // finish with waypoints
+        ac = 0;
+        Serial1.print("Waypoints Complete");
+        break; 
+      case 'D':                    // for the automatic control
+        knowangle();
+        break; 
+ }    } //************* end of switch case **********************
+  
+///*************** BLUETOOTH END*********************************************
+} 
+void SlowLeftTurn()
+{       
+analogWrite(ENA,200);
+analogWrite(ENB,200);
+digitalWrite(led,HIGH);
+digitalWrite(IN1,HIGH);
+digitalWrite(IN2,LOW);
+digitalWrite(IN3,LOW);
+digitalWrite(IN4,HIGH);
+}
+void SlowRightTurn()
+{
+analogWrite(ENA,200);
+analogWrite(ENB,200);
+digitalWrite(led,HIGH);
+digitalWrite(IN1,LOW);
+digitalWrite(IN2,HIGH);
+digitalWrite(IN3,HIGH);
+digitalWrite(IN4,LOW);
+}
+
+ // *************************************************************************************************************************************************
+
+void setHeading()
+                                                                 // This procedure will set the current heading and the Heading(s) of the robot going away and returning using opposing degrees from 0 to 360;
+                                                                 // for instance, if the car is leaving on a 0 degree path (North), it will return on a 180 degree path (South)
+{
+   for (int i=0; i <= 5; i++)                                    // Take several readings from the compass to insure accuracy
+      { 
+       CompassRead();                                            // get the current compass heading
+      }                                               
+    
+    desired_heading = compass_heading;                           // set the desired heading to equal the current compass heading
+    Heading_A = compass_heading;                                 // Set Heading A to current compass 
+    Heading_B = compass_heading + 180;                           // Set Heading B to current compass heading + 180  
+
+      if (Heading_B >= 360)                                      // if the heading is greater than 360 then subtract 360 from it, heading must be between 0 and 360
+         {
+          Heading_B = Heading_B - 360;
+         }
+     
+    Serial.print("Compass Heading Set: "); 
+    Serial.print(compass_heading);   
+    Serial.print(" Degrees");
+    
+    Serial.print("desired heading");
+    Serial.println(desired_heading);
+}
+
+// *************************************************************************************************************************************************
+
+
+void Compass_Forward()                                               
+{            
+  while (doit == 'W')
+{CompassRead();Bluetooth(); if (doit == 'S') {break;}
+    if ( abs(desired_heading - compass_heading) <= compass_dev ){Forward();} 
+else{int x = (desired_heading - 360);                          // x = the GPS desired heading - 360
+int y = (compass_heading - (x));                          // y = the Compass heading - x
+int z = (y - 360);                                        // z = y - 360
+if ((z <= 180) && (z >= 0)){SlowLeftTurn();Ping();}
+else {SlowRightTurn();Ping();}              
+}
+}
+}
+// **********************************************************************************************************************************************************************
+
+
+
+void CompassTurnRight()                                                          // This Function Turns the car 90 degrees to the right based on the current desired heading
+{
+  Stop();    
+  CompassRead();                                                                  // get current compass heading      
+
+    desired_heading = (desired_heading + 90);                                      // set desired_heading to plus 90 degrees 
+  if (desired_heading >= 360) {desired_heading = (desired_heading - 360);}       // if the desired heading is greater than 360 then subtract 360 from it
+
+  while ( abs(desired_heading - compass_heading) >= compass_dev)                 // If the desired heading is more than Compass Deviation in degrees from the actual compass heading then
+      {                                                                          // correct direction by turning left or right
+    CompassRead();                                                                // Update compass heading during While Loop
+    Bluetooth();                                                                 // if new bluetooth value received break from loop        
+    if (doit == 'S'){break;}                                               // If a Stop Bluetooth command ('S') is received then break from the Loop
+        
+    if (desired_heading >= 360) {desired_heading = (desired_heading - 360);}     // if the desired heading is greater than 360 then subtract 360 from it                                            
+                                                                
+    int x = (desired_heading - 359);                                             // x = the GPS desired heading - 360    
+    int y = (compass_heading - (x));                                             // y = the Compass heading - x
+    int z = (y - 360);                                                           // z = y - 360
+            
+        if ((z <= 180) && (z >= 0))                                              // if z is less than 180 and not a negative value then turn left 
+            {                                                                    // otherwise turn right
+              SlowLeftTurn();                            
+            } 
+            else
+            {
+              SlowRightTurn();        
+            }  
+        }    
+    {
+      Stop();                                                                  // Stop the Car when desired heading and compass heading match
+    }
+ }    
+
+
+// **********************************************************************************************************************************************************************
+
+void CompassTurnLeft()                                                           // This procedure turns the car 90 degrees to the left based on the current desired heading
+{
+  Stop();    
+ CompassRead();                                                                  // get current compass heading                                                                                  
+  //desired_heading = (compass_heading - 90);                                    // set desired_heading to compass value minus 90 degrees
+
+  desired_heading = (desired_heading - 90);                                      // set desired_heading to minus 90 degrees
+  if (desired_heading <= 0) {desired_heading = (desired_heading + 360);}         // if the desired heading is greater than 360 then add 360 to it
+  while ( abs(desired_heading - compass_heading) >= compass_dev)                 // If the desired heading is more than Compass Deviation in degrees from the actual compass heading then
+      {                                                                          // correct direction by turning left or right
+    CompassRead();                                                                // Get compass heading again during While Loop
+    Bluetooth();                                                                 // if new bluetooth value received break from loop              
+    if (doit == 'S'){break;}                                               // If a 'Stop' Blue tooth command is received then break from the Loop
+    
+    if (desired_heading >= 360) {desired_heading = (desired_heading - 360);}     // if the desired heading is greater than 360 then subtract 360 from it                                            
+                                                                
+    int x = (desired_heading - 359);                                             // x = the desired heading - 360    
+    int y = (compass_heading - (x));                                             // y = the Compass heading - x
+    int z = (y - 360);                                                           // z = y - 360
+        if (z <= 180)                                                            // if z is less than 180 and not a negative value then turn left         
+       // if ((z <= 180) && (z >= 0))                                             
+            {                                                                    // otherwise turn right
+              SlowLeftTurn();                             
+            } 
+            else
+            {
+              SlowRightTurn();              
+            }  
+        }    
+    {
+      Stop();                                                                 // Stop the Car when desired heading and compass heading match
+    }
+ }   
+
+// **********************************************************************************************************************************************************************
+
+void turnAround()                                                   // This procedure turns the Car around 180 degrees, every time the "Turn Around" button is pressed
+ {                                                                  // the car alternates whether the next turn will be to the left or right - this is determined by the 'pass' variable
+                                                                    // Imagine you are cutting the grass, when you get to the end of the row - the first pass you are turning one way and on the next pass you turn the opposite   
+    if (pass == 0) { CompassTurnRight(); }                          // If this is the first pass then turn right
+    
+    else { CompassTurnLeft(); }                                     // If this is the second pass then turn left
+      
+    //Forward_Meter();                                              // Go forward one meter (approximately)
+    Stop();                                                      // Stop the car
+    
+       
+    if (pass == 0)                                                  // If this is the first pass then Turn Right
+      {       
+        CompassTurnRight();                                         // Turn right
+        pass = 1 ;                                                  // Change the pass value to '1' so that the next turn will be to the left
+      }
+      
+    else 
+      {     
+         
+    if (desired_heading == Heading_A)                               // This section of code Alternates the desired heading 180 degrees
+     {                                                              // for the Compass drive forward
+      desired_heading = Heading_B;
+     }
+    else if (desired_heading == Heading_B)
+     {
+      desired_heading = Heading_A;
+     }        
+          
+        CompassTurnLeft();                                          // If this is the second pass then Turn Left
+        pass = 0;                                                   // Change the pass value to '0' so that the next turn will be to the right
+
+      }
+      
+  Compass_Forward();                                                // Maintain the 'desired heading' and drive forward
+}
+//**********************************************************************************************************
+void setWaypoint()                                            // Set up to 5 GPS waypoints
+{
+
+//if ((wpCount >= 0) && (wpCount < 50))
+if (wpCount >= 0)
+  {
+    Serial1.print("GPS Waypoint ");
+    Serial1.print(wpCount + 1);
+    Serial1.print(" Set ");
+    getGPS();                                                 // get the latest GPS coordinates
+   CompassRead();                                             // update latest compass heading     
+                                               
+    Home_LATarray[ac] = gps.location.lat();                   // store waypoint in an array   
+    Home_LONarray[ac] = gps.location.lng();                   // store waypoint in an array   
+                                                              
+    Serial.print("Waypoint #1: ");
+    Serial.print(Home_LATarray[0],6);
+    Serial.print(" ");
+    Serial.println(Home_LONarray[0],6);
+    Serial.print("Waypoint #2: ");
+    Serial.print(Home_LATarray[1],6);
+    Serial.print(" ");
+    Serial.println(Home_LONarray[1],6);
+    Serial.print("Waypoint #3: ");
+    Serial.print(Home_LATarray[2],6);
+    Serial.print(" ");
+    Serial.println(Home_LONarray[2],6);
+    Serial.print("Waypoint #4: ");
+    Serial.print(Home_LATarray[3],6);
+    Serial.print(" ");
+    Serial.println(Home_LONarray[3],6);
+    Serial.print("Waypoint #5: ");
+    Serial.print(Home_LATarray[4],6);
+    Serial.print(" ");
+    Serial.println(Home_LONarray[4],6);
+
+    wpCount++;                                                  // increment waypoint counter
+    ac++;                                                       // increment array counter
+        
+  }         
+  else {Serial1.print("Waypoints Full");}
+}
+//*****************************************************************************************************************************
+//*****************************************************************************************************************************
+void goWaypoint()
+{   
+ Serial1.println("Go to Waypoint");
+//Serial.print("Home_Latarray ");
+//Serial.print(Home_LATarray[ac],6);
+//Serial.print(" ");
+//Serial.println(Home_LONarray[ac],6);   
+
+//Serial1.print("Distance to Home");   
+//Serial1.print(Distance_To_Home);
+
+//Serial1.print("ac= ");
+//Serial1.print(ac);
+
+ while (true)  
+  {                                                                // Start of Go_Home procedure 
+  Bluetooth();                                                     // Run the Bluetooth procedure to see if there is any data being sent via BT
+  if (doit == 'S'){break;}                                   // If a 'Stop' Bluetooth command is received then break from the Loop
+  CompassRead();                                                    // Update Compass heading                                          
+  getGPS();                                                        // Tiny GPS function that retrieves GPS data - update GPS location// delay time changed from 100 to 10
+  
+  if (millis() > 5000 && gps.charsProcessed() < 10)                // If no Data from GPS within 5 seconds then send error
+    Serial1.println(F("No GPS data: check wiring"));     
+ 
+  Distance_To_Home = TinyGPSPlus::distanceBetween(gps.location.lat(),gps.location.lng(),Home_LATarray[ac], Home_LONarray[ac]);  //Query Tiny GPS for Distance to Destination
+  GPS_Course = TinyGPSPlus::courseTo(gps.location.lat(),gps.location.lng(),Home_LATarray[ac],Home_LONarray[ac]);                               //Query Tiny GPS for Course to Destination   
+   
+   /*
+    if (Home_LATarray[ac] == 0) {
+      Serial1.print("End of Waypoints");
+      StopCar();      
+      break;
+      }      
+   */ 
+    if (Distance_To_Home == 0)                                   // If the Vehicle has reached it's Destination, then Stop
+        {
+        Stop();                                               // Stop the robot after each waypoint is reached
+        Serial1.println("You have arrived!");                    // Print to Bluetooth device - "You have arrived"          
+        ac++;                                                    // increment counter for next waypoint
+        break;                                                   // Break from Go_Home procedure and send control back to the Void Loop 
+                                                                 // go to next waypoint
+        
+        }   
+   
+   
+   if ( abs(GPS_Course - compass_heading) <= 15)                  // If GPS Course and the Compass Heading are within x degrees of each other then go Forward                                                                  
+                                                                  // otherwise find the shortest turn radius and turn left or right  
+       {
+         Forward();                                               // Go Forward
+       } else 
+         {                                                       
+            int x = (GPS_Course - 360);                           // x = the GPS desired heading - 360
+            int y = (compass_heading - (x));                      // y = the Compass heading - x
+            int z = (y - 360);                                    // z = y - 360
+            
+            if ((z <= 180) && (z >= 0))                           // if z is less than 180 and not a negative value then turn left otherwise turn right
+                  { SlowLeftTurn();  }
+             else { SlowRightTurn(); }               
+        } 
+    
+
+  }                                                              // End of While Loop
+
+  
+}                                                                // End of Go_Home procedure
+//******************************************************************************************************************************************
+void clearWaypoints()
+{
+   memset(Home_LATarray, 0, sizeof(Home_LATarray));             // clear the array
+   memset(Home_LONarray, 0, sizeof(Home_LONarray));             // clear the array
+   wpCount = 0;                                                 // reset increment counter to 0
+   ac = 0;
+   
+   Serial1.print("GPS Waypoints Cleared");                      // display waypoints cleared
+  
+}
+
+ // *************************************************************************************************************************************************
+void Ping()
+{ 
+  currentMillis = millis();
+  
+ if ((currentMillis - previousMillis >= interval) && (pingOn == true)) 
+ {
+  previousMillis = currentMillis;
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(5);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+
+  pinMode(echoPin, INPUT);
+  duration = pulseIn(echoPin, HIGH);
+  
+  int inches = (duration / 2) / 74;                       // convert the time into a distance
+  Ping_distance == inches;  
+ 
+    if ((inches < 12) && (doit != 'S'))
+      {
+        Reverse();                                        // Quick reverse to Stop quickly
+        delay(100);
+        Stop();   
+        doit = 'S';                                 // Set bluetooth value to "Stop"
+      } 
+  
+  }       // end if statement
+ 
+}         // end Ping()
+
+//******************************************ultrasonic***********************
+ void distance(){ 
+distr = ultrasonicr.read();
+Serial.print("Right in CM: ");
+Serial.println(distr);
+delay (50);
+}
+void distancem(){
+  distm = ultrasonicm.read();
+Serial.print("Middle in CM: ");
+Serial.println(distm);
+delay (50);
+  }
+  void distancel(){
+    distl = ultrasonicl.read();
+Serial.print("Left in CM: ");
+Serial.println(distl);
+delay (50);
+}
+//*******************************************************
+void turnleft(){
+analogWrite(ENA,200);
+analogWrite(ENB,150);
+digitalWrite(IN1,HIGH);
+digitalWrite(IN2,LOW);
+digitalWrite(IN3,HIGH);
+digitalWrite(IN4,LOW);
+}
+void turnright(){
+analogWrite(ENA,150);
+analogWrite(ENB,200);
+digitalWrite(IN1,HIGH);
+digitalWrite(IN2,LOW);
+digitalWrite(IN3,HIGH);
+digitalWrite(IN4,LOW);
+}
+//*************************************ultra conditions*********************
+void knowangle(){ while (true){Bluetooth();if (doit == 'S'){break;}
+else if ((distr<50)&&(distm>50)&&(distl>50)){digitalWrite(led1,HIGH);digitalWrite(led2,LOW);digitalWrite(led3,LOW);Forward();Bluetooth();}//only right blocked
+else if ((distr>50)&&(distm>50)&&(distl>50)){digitalWrite(led1,LOW);digitalWrite(led2,LOW);digitalWrite(led3,LOW);Bluetooth();}//there in no block
+else if ((distr>50)&&(distm>50)&&(distl<50)){digitalWrite(led1,LOW);digitalWrite(led2,LOW);digitalWrite(led3,HIGH);RightTurn();Bluetooth();}//only left blocked
+else if ((distr<50)&&(distm<50)&&(distl>50)){digitalWrite(led1,HIGH);digitalWrite(led2,HIGH);digitalWrite(led3,LOW);LeftTurn();Bluetooth();}//middle right blocked
+else if ((distr>50)&&(distm<50)&&(distl<50)){digitalWrite(led1,LOW);digitalWrite(led2,HIGH);digitalWrite(led3,HIGH);RightTurn();Bluetooth();}//middle left blocked
+else if ((distr<50)&&(distm>50)&&(distl<50)){digitalWrite(led1,HIGH);digitalWrite(led2,LOW);digitalWrite(led3,HIGH);Bluetooth();}//RIGHT AND left blocked
+else if ((distr<50)&&(distm<50)&&(distl<50)){digitalWrite(led1,HIGH);digitalWrite(led2,HIGH);digitalWrite(led3,HIGH);Stop();Bluetooth();}//all blocked
+else if ((distr>50)&&(distm<50)&&(distl>50)&&(distr>distl)){digitalWrite(led1,LOW);digitalWrite(led2,HIGH);digitalWrite(led3,LOW);RightTurn();Bluetooth();}//only middle blocked 
+else if ((distr>50)&&(distm<50)&&(distl>50)&&(distl>distr)){digitalWrite(led1,LOW);digitalWrite(led2,HIGH);digitalWrite(led3,LOW);LeftTurn();Bluetooth();}//only middle blocked
+}
+}
