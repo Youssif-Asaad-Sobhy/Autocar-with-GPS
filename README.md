@@ -1,2 +1,2 @@
 # Autocar-with-GPS
-Arduino autmated car self driving
+Arduino automated self driving car  
